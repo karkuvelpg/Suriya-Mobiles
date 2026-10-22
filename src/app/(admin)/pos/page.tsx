@@ -15,10 +15,15 @@ import {
   QrCode,
   Printer,
   X,
-  ShieldAlert,
+  ShieldCheck,
   PauseCircle,
   PlayCircle,
   Percent,
+  FileText,
+  CheckCircle2,
+  Sparkles,
+  ArrowRight,
+  ShieldAlert,
 } from "lucide-react";
 import { formatINR, calculateCartTotals } from "@/lib/finance";
 import { INITIAL_PRODUCTS, ProductItem } from "@/lib/mock-data";
@@ -30,10 +35,12 @@ interface CartLineItem {
   unitPricePaise: number;
   discountPaise: number;
   taxRatePercent: number;
+  isGstItem: boolean;
 }
 
 interface LastInvoiceData {
   invoiceNumber: string;
+  invoiceType: "TAX_INVOICE" | "NORMAL_BILL";
   date: string;
   customerName: string;
   customerPhone: string;
@@ -49,6 +56,7 @@ interface HeldBill {
   time: string;
   cart: CartLineItem[];
   discountRupees: string;
+  billType: "TAX_INVOICE" | "NORMAL_BILL";
 }
 
 export default function POSBillingPage() {
@@ -61,11 +69,15 @@ export default function POSBillingPage() {
       unitPricePaise: INITIAL_PRODUCTS[0].sellingPricePaise,
       discountPaise: 0,
       taxRatePercent: INITIAL_PRODUCTS[0].taxRatePercent,
+      isGstItem: INITIAL_PRODUCTS[0].isGstProduct !== false,
     },
   ]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+
+  // Bill Mode: "TAX_INVOICE" (GST) vs "NORMAL_BILL" (Non-GST / Estimate)
+  const [billType, setBillType] = useState<"TAX_INVOICE" | "NORMAL_BILL">("TAX_INVOICE");
 
   // Customer details
   const [customerName, setCustomerName] = useState("Walk-in Customer");
@@ -83,15 +95,19 @@ export default function POSBillingPage() {
   const [cashTendered, setCashTendered] = useState<string>("");
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [lastInvoice, setLastInvoice] = useState<LastInvoiceData | null>(null);
+  const [printFormat, setPrintFormat] = useState<"thermal" | "a4">("thermal");
 
   // Quick Customer Switcher
   const selectPresetCustomer = (name: string, phone: string, gstin = "") => {
     setCustomerName(name);
     setCustomerPhone(phone);
     setCustomerGstin(gstin);
+    if (gstin) {
+      setBillType("TAX_INVOICE");
+    }
   };
 
-  // Filter products for quick-add grid
+  // Filter products for quick-add catalog
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
       const matchesCategory = selectedCategory === "all" || p.category === selectedCategory;
@@ -104,7 +120,7 @@ export default function POSBillingPage() {
     });
   }, [products, selectedCategory, searchQuery]);
 
-  // Handle direct barcode scanner enter
+  // Handle direct barcode scanner Enter key
   const handleBarcodeEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && searchQuery.trim()) {
       const match = products.find(
@@ -122,6 +138,8 @@ export default function POSBillingPage() {
 
   // Cart operations
   const addToCart = (product: ProductItem) => {
+    const isGst = product.isGstProduct !== false;
+
     setCart((prev) => {
       const existing = prev.find((item) => item.product.id === product.id);
       if (existing) {
@@ -135,6 +153,7 @@ export default function POSBillingPage() {
               unitPricePaise: product.sellingPricePaise,
               discountPaise: 0,
               taxRatePercent: product.taxRatePercent,
+              isGstItem: isGst,
             },
           ];
         }
@@ -151,6 +170,7 @@ export default function POSBillingPage() {
           unitPricePaise: product.sellingPricePaise,
           discountPaise: 0,
           taxRatePercent: product.taxRatePercent,
+          isGstItem: isGst,
         },
       ];
     });
@@ -185,12 +205,14 @@ export default function POSBillingPage() {
       time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
       cart,
       discountRupees: billDiscountRupees,
+      billType,
     };
     setHeldBills([...heldBills, newHeld]);
     setCart([]);
     setBillDiscountRupees("0");
     setCustomerName("Walk-in Customer");
     setCustomerPhone("9840000000");
+    setCustomerGstin("");
   };
 
   // Recall parked bill
@@ -198,19 +220,21 @@ export default function POSBillingPage() {
     setCart(held.cart);
     setCustomerName(held.customerName);
     setBillDiscountRupees(held.discountRupees);
+    setBillType(held.billType);
     setHeldBills(heldBills.filter((h) => h.id !== held.id));
   };
 
-  // Cart Calculations
+  // Cart Calculations with GST / Normal Bill differentiation
   const calculatedItems = useMemo(() => {
     return cart.map((item) => ({
       unitPricePaise: item.unitPricePaise,
       quantity: item.qty,
       discountPaise: item.discountPaise,
-      gstRatePercent: item.taxRatePercent,
+      // If cashier selected NORMAL_BILL or item is marked non-GST, rate is 0
+      gstRatePercent: billType === "NORMAL_BILL" || !item.isGstItem ? 0 : item.taxRatePercent,
       isInterState: false,
     }));
-  }, [cart]);
+  }, [cart, billType]);
 
   const additionalDiscountPaise = useMemo(() => {
     const val = parseFloat(billDiscountRupees || "0");
@@ -239,8 +263,10 @@ export default function POSBillingPage() {
       return;
     }
 
+    const prefix = billType === "TAX_INVOICE" ? "INV" : "EST";
     const invoiceData: LastInvoiceData = {
-      invoiceNumber: `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      invoiceNumber: `${prefix}-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      invoiceType: billType,
       date: new Date().toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }),
       customerName,
       customerPhone,
@@ -262,12 +288,12 @@ export default function POSBillingPage() {
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
             <h1 className="text-2xl font-black tracking-tight text-foreground">POS Terminal</h1>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 font-semibold border border-sky-500/20">
-              Station #01 — Anna Nagar
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-sky-500/10 text-sky-400 font-semibold border border-sky-500/20">
+              Station #01 — Anna Nagar Showroom
             </span>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Fast billing with automated 18% GST calculation, IMEI assignment & thermal receipt generation
+            Real-time cashier terminal with smart GST / Normal bill auto-switch and thermal receipt engine
           </p>
         </div>
 
@@ -279,7 +305,7 @@ export default function POSBillingPage() {
                 <button
                   key={h.id}
                   onClick={() => handleRecallBill(h)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 font-bold text-[11px] hover:bg-amber-500/25 transition-colors cursor-pointer"
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 font-bold text-xs hover:bg-amber-500/25 transition-colors cursor-pointer"
                   title="Click to resume held bill"
                 >
                   <PlayCircle className="w-3.5 h-3.5" />
@@ -342,7 +368,7 @@ export default function POSBillingPage() {
                   onClick={() => setSelectedCategory(tab.id)}
                   className={`px-3 py-1.5 rounded-xl font-medium whitespace-nowrap transition-all cursor-pointer ${
                     selectedCategory === tab.id
-                      ? "bg-primary text-primary-foreground shadow-sm"
+                      ? "bg-primary text-primary-foreground shadow-sm font-bold"
                       : "bg-muted/40 hover:bg-muted text-muted-foreground"
                   }`}
                 >
@@ -352,376 +378,479 @@ export default function POSBillingPage() {
             </div>
           </div>
 
-          {/* Product Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[620px] overflow-y-auto pr-1">
-            {filteredProducts.map((product) => (
-              <div
-                key={product.id}
-                onClick={() => addToCart(product)}
-                className="group relative flex flex-col justify-between p-3 rounded-2xl border border-border/70 bg-card/50 hover:bg-card/90 hover:border-primary/50 transition-all cursor-pointer shadow-sm hover:shadow-md hover:-translate-y-0.5"
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-1 mb-1">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400">
-                      {product.brand}
-                    </span>
-                    {product.hasSerial && (
-                      <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                        IMEI
-                      </span>
-                    )}
-                  </div>
-                  <h4 className="text-xs font-semibold line-clamp-2 text-foreground group-hover:text-primary transition-colors">
-                    {product.name}
-                  </h4>
-                  <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">
-                    SKU: {product.sku}
-                  </p>
-                </div>
-
-                <div className="mt-3 pt-2 border-t border-border/50 flex items-center justify-between">
+          {/* Product Cards Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[600px] overflow-y-auto pr-1">
+            {filteredProducts.map((p) => {
+              const isGst = p.isGstProduct !== false;
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => addToCart(p)}
+                  className="group relative p-3 rounded-2xl border border-border/80 bg-card/60 hover:bg-card hover:border-primary/50 transition-all cursor-pointer flex flex-col justify-between shadow-xs hover:shadow-md hover:scale-[1.01]"
+                >
                   <div>
-                    <span className="text-xs font-extrabold text-foreground">
-                      {formatINR(product.sellingPricePaise)}
+                    <div className="relative h-24 w-full rounded-xl overflow-hidden bg-muted/40 flex items-center justify-center p-2 mb-2">
+                      <img
+                        src={p.imageUrl}
+                        alt={p.name}
+                        className="max-h-full object-contain group-hover:scale-105 transition-transform"
+                      />
+                      {/* GST / Non-GST indicator badge */}
+                      <span
+                        className={`absolute top-1.5 right-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${
+                          isGst
+                            ? "bg-sky-500/20 text-sky-300 border-sky-500/30"
+                            : "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                        }`}
+                      >
+                        {isGst ? "GST" : "Normal"}
+                      </span>
+                    </div>
+
+                    <h4 className="font-semibold text-xs text-foreground line-clamp-2 leading-tight">
+                      {p.name}
+                    </h4>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Stock: <span className="font-bold text-foreground">{p.stockQty}</span>
+                    </p>
+                  </div>
+
+                  <div className="mt-2 pt-2 border-t border-border/50 flex items-center justify-between">
+                    <span className="font-extrabold text-xs text-foreground">
+                      {formatINR(p.sellingPricePaise)}
                     </span>
-                    <span className="block text-[9px] text-muted-foreground">
-                      Incl. 18% GST
+                    <span className="w-6 h-6 rounded-lg bg-primary/10 text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                      <Plus className="w-3.5 h-3.5" />
                     </span>
                   </div>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-muted text-muted-foreground">
-                    Stock: {product.stockQty}
-                  </span>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
-        {/* Right: Active Bill & Checkout Panel (5 Cols) */}
-        <div className="lg:col-span-5 flex flex-col rounded-3xl border border-border/80 bg-card/60 backdrop-blur-xl p-5 shadow-xl">
-          {/* Quick Customer Selection */}
-          <div className="pb-3 border-b border-border/60 space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase flex items-center gap-1">
-                <User className="w-3 h-3 text-sky-400" />
-                <span>Customer Details</span>
-              </label>
+        {/* Right: Cart, Customer & Checkout Sidebar (5 Cols) */}
+        <div className="lg:col-span-5 rounded-3xl border border-border/80 bg-card/60 backdrop-blur-xl p-5 shadow-lg flex flex-col justify-between space-y-4">
+          <div className="space-y-4">
+            {/* Bill Type Selector: GST Tax Invoice vs Normal Bill */}
+            <div className="p-3 rounded-2xl border border-border/70 bg-muted/20 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                  Bill Output Type
+                </span>
+                <span className="text-[10px] text-sky-400 font-semibold">
+                  {billType === "TAX_INVOICE" ? "GST Tax Invoice" : "Normal Cash Estimate"}
+                </span>
+              </div>
 
-              <select
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === "c1") selectPresetCustomer("Rajesh Kumar", "9840123456", "33AAACR1234F1Z1");
-                  else if (val === "c2") selectPresetCustomer("Priya Sundaram", "9790456789");
-                  else if (val === "c3") selectPresetCustomer("Senthil Nathan", "9444123890");
-                  else selectPresetCustomer("Walk-in Customer", "9840000000");
-                }}
-                className="text-[10px] bg-muted/40 border border-border rounded-lg px-2 py-0.5 text-foreground cursor-pointer"
-              >
-                <option value="walkin">Walk-in Customer</option>
-                <option value="c1">Rajesh Kumar (B2B)</option>
-                <option value="c2">Priya Sundaram</option>
-                <option value="c3">Senthil Nathan (Khata)</option>
-              </select>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBillType("TAX_INVOICE")}
+                  className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    billType === "TAX_INVOICE"
+                      ? "bg-sky-500/20 border-sky-500 text-sky-300 shadow-sm"
+                      : "border-border/60 bg-card/40 text-muted-foreground hover:bg-muted/40"
+                  }`}
+                >
+                  <ShieldCheck className="w-4 h-4 text-sky-400" />
+                  <span>GST Tax Invoice</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setBillType("NORMAL_BILL")}
+                  className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    billType === "NORMAL_BILL"
+                      ? "bg-amber-500/20 border-amber-500 text-amber-300 shadow-sm"
+                      : "border-border/60 bg-card/40 text-muted-foreground hover:bg-muted/40"
+                  }`}
+                >
+                  <FileText className="w-4 h-4 text-amber-400" />
+                  <span>Normal Cash Bill</span>
+                </button>
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div>
+            {/* Customer Details Box */}
+            <div className="p-3.5 rounded-2xl border border-border/70 bg-muted/30 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                  <User className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Customer Details</span>
+                </div>
+                {/* Preset Customer selector */}
+                <div className="flex items-center gap-1 text-[10px]">
+                  <button
+                    onClick={() => selectPresetCustomer("Walk-in Customer", "9840000000")}
+                    className="px-2 py-0.5 rounded bg-muted hover:bg-muted/80 text-foreground font-semibold cursor-pointer"
+                  >
+                    Walk-in
+                  </button>
+                  <button
+                    onClick={() => selectPresetCustomer("Rajesh Kumar", "9840123456", "33AAACR1234F1Z1")}
+                    className="px-2 py-0.5 rounded bg-muted hover:bg-muted/80 text-foreground font-semibold cursor-pointer"
+                  >
+                    Rajesh (B2B)
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
                 <input
                   type="text"
                   placeholder="Customer Name"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
-                  className="w-full h-8 px-2.5 rounded-lg border border-border bg-background text-xs font-medium focus:border-primary focus:outline-none"
+                  className="h-8 px-2.5 rounded-xl border border-border bg-background focus:border-primary focus:outline-none"
                 />
-              </div>
-              <div>
                 <input
-                  type="text"
-                  placeholder="Phone Number"
+                  type="tel"
+                  placeholder="Mobile (10 Digits)"
                   value={customerPhone}
                   onChange={(e) => setCustomerPhone(e.target.value)}
-                  className="w-full h-8 px-2.5 rounded-lg border border-border bg-background text-xs font-medium focus:border-primary focus:outline-none"
+                  className="h-8 px-2.5 rounded-xl border border-border bg-background focus:border-primary focus:outline-none font-mono"
                 />
               </div>
-            </div>
-          </div>
 
-          {/* Cart Items List */}
-          <div className="flex-1 overflow-y-auto my-3 space-y-2.5 max-h-[290px] pr-1">
-            {cart.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-44 text-muted-foreground">
-                <Receipt className="w-8 h-8 opacity-40 mb-2" />
-                <p className="text-xs font-medium">Bill is currently empty</p>
-                <p className="text-[11px] opacity-70">Click items on the left or scan barcode to add</p>
-              </div>
-            ) : (
-              cart.map((item, index) => (
-                <div
-                  key={`${item.product.id}-${index}`}
-                  className="p-3 rounded-2xl border border-border/70 bg-background/50 space-y-2"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-xs text-foreground truncate">
-                        {item.product.name}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground font-mono">
-                        HSN: {item.product.hsnCode} • Tax: {item.taxRatePercent}%
-                      </p>
+              {billType === "TAX_INVOICE" && (
+                <input
+                  type="text"
+                  placeholder="Customer GSTIN (Optional for B2B Tax Credit)"
+                  value={customerGstin}
+                  onChange={(e) => setCustomerGstin(e.target.value.toUpperCase())}
+                  className="w-full h-8 px-2.5 rounded-xl border border-border bg-background focus:border-primary focus:outline-none font-mono text-[11px]"
+                />
+              )}
+            </div>
+
+            {/* Cart Line Items */}
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+              {cart.length === 0 ? (
+                <div className="py-8 text-center text-muted-foreground text-xs space-y-1">
+                  <Receipt className="w-8 h-8 opacity-30 mx-auto" />
+                  <p className="font-semibold">Cart is currently empty</p>
+                  <p className="text-[10px]">Select or scan products from the left to start billing</p>
+                </div>
+              ) : (
+                cart.map((item, index) => (
+                  <div
+                    key={`${item.product.id}-${index}`}
+                    className="p-3 rounded-2xl border border-border/60 bg-muted/20 space-y-2 text-xs"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <h5 className="font-bold text-foreground truncate">{item.product.name}</h5>
+                          {billType === "TAX_INVOICE" && (
+                            <span
+                              className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                                item.isGstItem
+                                  ? "bg-sky-500/10 text-sky-400"
+                                  : "bg-amber-500/10 text-amber-400"
+                              }`}
+                            >
+                              {item.isGstItem ? `${item.taxRatePercent}% GST` : "0% Non-GST"}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground font-mono">
+                          Rate: {formatINR(item.unitPricePaise)}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => updateQty(index, -1)}
+                          className="w-6 h-6 rounded-lg border border-border flex items-center justify-center hover:bg-muted text-foreground cursor-pointer"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="w-6 text-center font-bold text-foreground">{item.qty}</span>
+                        <button
+                          onClick={() => updateQty(index, 1)}
+                          className="w-6 h-6 rounded-lg border border-border flex items-center justify-center hover:bg-muted text-foreground cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => removeFromCart(index)}
+                          className="w-6 h-6 rounded-lg text-rose-400 hover:bg-rose-500/10 flex items-center justify-center ml-1 cursor-pointer"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-bold text-xs text-foreground">
-                        {formatINR(item.unitPricePaise * item.qty - item.discountPaise)}
-                      </p>
-                      <button
-                        onClick={() => removeFromCart(index)}
-                        className="text-muted-foreground hover:text-rose-500 transition-colors p-1 cursor-pointer"
-                        title="Remove item"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+
+                    {/* IMEI Selector for Serialized items */}
+                    {item.product.hasSerial && (
+                      <div className="flex items-center gap-2 pt-1 border-t border-border/40 text-[11px]">
+                        <Smartphone className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                        <span className="text-muted-foreground text-[10px] uppercase font-semibold">IMEI:</span>
+                        <select
+                          value={item.selectedImei || ""}
+                          onChange={(e) => updateImei(index, e.target.value)}
+                          className="flex-1 h-7 px-2 rounded-lg border border-border bg-background text-[11px] font-mono font-semibold text-foreground focus:outline-none"
+                        >
+                          {item.product.availableSerials?.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Bill Level Discount & Summary */}
+            {cart.length > 0 && (
+              <div className="pt-2 border-t border-border/70 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-muted-foreground flex items-center gap-1">
+                    <Percent className="w-3 h-3 text-sky-400" /> Bill Discount (₹):
+                  </span>
+                  <input
+                    type="number"
+                    value={billDiscountRupees}
+                    onChange={(e) => setBillDiscountRupees(e.target.value)}
+                    className="w-24 h-7 px-2 rounded-lg border border-border bg-background text-right font-bold text-foreground text-xs"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Taxable Subtotal:</span>
+                    <span>{formatINR(totals.taxableAmountPaise)}</span>
                   </div>
 
-                  {/* IMEI selection if serialized */}
-                  {item.product.hasSerial && (
-                    <div className="flex items-center gap-2 p-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs">
-                      <Smartphone className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                      <span className="text-[10px] font-semibold text-amber-500 uppercase">
-                        IMEI:
-                      </span>
-                      <input
-                        type="text"
-                        placeholder="Scan or select 15-digit IMEI"
-                        value={item.selectedImei || ""}
-                        onChange={(e) => updateImei(index, e.target.value)}
-                        className="flex-1 bg-transparent border-none text-[11px] font-mono font-medium focus:outline-none text-foreground placeholder:text-muted-foreground"
-                      />
+                  {billType === "TAX_INVOICE" ? (
+                    <>
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>CGST (Central Tax):</span>
+                        <span>{formatINR(totals.totalCgstPaise)}</span>
+                      </div>
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>SGST (State Tax):</span>
+                        <span>{formatINR(totals.totalSgstPaise)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex justify-between text-amber-400 font-semibold text-[11px]">
+                      <span>Tax Output:</span>
+                      <span>₹0.00 (Exempt / Retail Estimate)</span>
                     </div>
                   )}
 
-                  {/* Quantity and Price controls */}
-                  <div className="flex items-center justify-between text-xs pt-1">
-                    <div className="flex items-center gap-2 bg-muted/40 rounded-lg p-1 border border-border/50">
-                      <button
-                        onClick={() => updateQty(index, -1)}
-                        className="w-5 h-5 flex items-center justify-center rounded bg-background hover:bg-card text-foreground cursor-pointer"
-                      >
-                        <Minus className="w-3 h-3" />
-                      </button>
-                      <span className="font-bold px-1 text-xs">{item.qty}</span>
-                      <button
-                        onClick={() => updateQty(index, 1)}
-                        disabled={item.product.hasSerial} // phones add as separate IMEI line
-                        className="w-5 h-5 flex items-center justify-center rounded bg-background hover:bg-card text-foreground disabled:opacity-30 cursor-pointer"
-                      >
-                        <Plus className="w-3 h-3" />
-                      </button>
-                    </div>
-
-                    <span className="text-[11px] text-muted-foreground">
-                      @ {formatINR(item.unitPricePaise)} each
-                    </span>
+                  <div className="flex justify-between text-base font-black text-foreground pt-1 border-t border-border">
+                    <span>Grand Total:</span>
+                    <span className="text-emerald-400">{formatINR(totals.grandTotalPaise)}</span>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-
-          {/* Missing IMEI Alert */}
-          {missingImeiItems.length > 0 && (
-            <div className="flex items-center gap-2 p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs mb-2">
-              <ShieldAlert className="w-4 h-4 shrink-0" />
-              <span>Please assign 15-digit IMEI to all smartphones before checkout.</span>
-            </div>
-          )}
-
-          {/* Discount & Calculation Summary */}
-          <div className="p-3 rounded-2xl bg-muted/30 border border-border/60 space-y-2 text-xs">
-            {/* Bill Discount Input */}
-            <div className="flex items-center justify-between pb-1.5 border-b border-border/50">
-              <span className="text-muted-foreground font-medium flex items-center gap-1">
-                <Percent className="w-3.5 h-3.5 text-sky-400" /> Bill Discount (₹):
-              </span>
-              <input
-                type="number"
-                min="0"
-                placeholder="0"
-                value={billDiscountRupees}
-                onChange={(e) => setBillDiscountRupees(e.target.value)}
-                className="w-24 h-6 px-2 rounded border border-border bg-background text-xs font-bold text-right"
-              />
-            </div>
-
-            <div className="flex justify-between text-muted-foreground">
-              <span>Taxable Subtotal:</span>
-              <span>{formatINR(totals.taxableAmountPaise)}</span>
-            </div>
-            <div className="flex justify-between text-muted-foreground">
-              <span>CGST (9%):</span>
-              <span>{formatINR(totals.totalCgstPaise)}</span>
-            </div>
-            <div className="flex justify-between text-muted-foreground">
-              <span>SGST (9%):</span>
-              <span>{formatINR(totals.totalSgstPaise)}</span>
-            </div>
-            {totals.roundOffPaise !== 0 && (
-              <div className="flex justify-between text-muted-foreground text-[11px]">
-                <span>Round-off:</span>
-                <span>{totals.roundOffPaise > 0 ? `+${totals.roundOffPaise}p` : `${totals.roundOffPaise}p`}</span>
               </div>
             )}
-            <div className="flex justify-between font-black text-base text-foreground pt-1.5 border-t border-border">
-              <span>Grand Total:</span>
-              <span className="text-emerald-500">{formatINR(totals.grandTotalPaise)}</span>
-            </div>
           </div>
 
           {/* Payment Method Selector */}
-          <div className="mt-3">
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase">
+          <div className="space-y-3 pt-2">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
               Payment Method
-            </label>
-            <div className="grid grid-cols-4 gap-1.5 mt-1">
+            </span>
+            <div className="grid grid-cols-4 gap-2">
               {[
-                { id: "UPI", label: "UPI", icon: QrCode },
+                { id: "UPI", label: "UPI / QR", icon: QrCode },
                 { id: "CASH", label: "Cash", icon: Banknote },
-                { id: "CARD", label: "Card", icon: CreditCard },
+                { id: "CARD", label: "Card POS", icon: CreditCard },
                 { id: "SPLIT", label: "Split", icon: Receipt },
               ].map((m) => {
                 const Icon = m.icon;
                 return (
                   <button
                     key={m.id}
-                    onClick={() =>
-                      setPaymentMethod(m.id as "CASH" | "UPI" | "CARD" | "SPLIT")
-                    }
-                    className={`flex flex-col items-center justify-center p-2 rounded-xl border text-[11px] font-semibold transition-all cursor-pointer ${
+                    onClick={() => setPaymentMethod(m.id as any)}
+                    className={`p-2 rounded-xl border text-center font-bold text-xs flex flex-col items-center gap-1 transition-all cursor-pointer ${
                       paymentMethod === m.id
                         ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                        : "bg-muted/20 border-border text-muted-foreground hover:bg-muted/50"
+                        : "border-border/60 bg-muted/20 text-muted-foreground hover:bg-muted/40"
                     }`}
                   >
-                    <Icon className="w-3.5 h-3.5 mb-1" />
-                    {m.label}
+                    <Icon className="w-3.5 h-3.5" />
+                    <span className="text-[10px]">{m.label}</span>
                   </button>
                 );
               })}
             </div>
+
+            {/* Cash Tendered Calculator */}
+            {paymentMethod === "CASH" && (
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-muted/30 border border-border text-xs">
+                <div>
+                  <label className="text-[10px] font-semibold text-muted-foreground block">
+                    Cash Tendered:
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="e.g. 50000"
+                    value={cashTendered}
+                    onChange={(e) => setCashTendered(e.target.value)}
+                    className="w-28 mt-0.5 h-7 px-2 rounded-lg border border-border bg-background text-xs font-bold"
+                  />
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-muted-foreground">Change Due:</span>
+                  <p className="font-extrabold text-sm text-emerald-400">
+                    {formatINR(changeReturnPaise)}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Checkout Action Button */}
+            <button
+              onClick={handleCheckout}
+              disabled={cart.length === 0 || missingImeiItems.length > 0}
+              className={`w-full h-12 rounded-2xl text-white font-bold text-xs shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                billType === "TAX_INVOICE"
+                  ? "bg-gradient-to-r from-sky-500 via-indigo-600 to-violet-600 hover:from-sky-600 hover:to-violet-700 shadow-sky-500/25"
+                  : "bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 shadow-amber-500/25"
+              } disabled:opacity-40 disabled:cursor-not-allowed`}
+            >
+              <Printer className="w-4 h-4" />
+              <span>
+                {billType === "TAX_INVOICE" ? "Generate GST Tax Invoice" : "Generate Normal Retail Bill"} (
+                {formatINR(totals.grandTotalPaise)})
+              </span>
+            </button>
           </div>
-
-          {/* Cash Tendered Input if Cash */}
-          {paymentMethod === "CASH" && (
-            <div className="mt-2.5 p-2 rounded-xl bg-muted/20 border border-border/60 flex items-center justify-between text-xs">
-              <div>
-                <label className="text-[10px] text-muted-foreground font-semibold uppercase">
-                  Cash Received (₹)
-                </label>
-                <input
-                  type="number"
-                  placeholder="e.g. 150000"
-                  value={cashTendered}
-                  onChange={(e) => setCashTendered(e.target.value)}
-                  className="w-28 mt-0.5 h-7 px-2 rounded border border-border bg-background text-xs font-bold"
-                />
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] text-muted-foreground">Change Due:</span>
-                <p className="font-extrabold text-sm text-emerald-500">
-                  {formatINR(changeReturnPaise)}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Checkout Button */}
-          <button
-            onClick={handleCheckout}
-            disabled={cart.length === 0 || missingImeiItems.length > 0}
-            className="mt-4 w-full h-12 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-sm shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-          >
-            <Printer className="w-4 h-4" />
-            <span>Generate GST Tax Invoice ({formatINR(totals.grandTotalPaise)})</span>
-          </button>
         </div>
       </div>
 
-      {/* Invoice Print & Share Modal */}
+      {/* Invoice Modal — Dual Format (80mm Thermal Slip / A4 Invoice) */}
       {showInvoiceModal && lastInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative w-full max-w-lg rounded-3xl border border-border bg-card p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
+          <div className="relative w-full max-w-lg rounded-3xl border border-border bg-card p-6 shadow-2xl max-h-[92vh] overflow-y-auto">
             <button
               onClick={() => setShowInvoiceModal(false)}
-              className="absolute top-4 right-4 p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
+              className="absolute top-4 right-4 p-2 rounded-xl text-muted-foreground hover:text-foreground cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
-            {/* Printable Tax Invoice Content */}
-            <div id="printable-invoice" className="space-y-4 text-xs font-sans">
-              {/* Store Header */}
-              <div className="text-center pb-3 border-b border-dashed border-border">
-                <h2 className="text-lg font-black tracking-tight text-foreground uppercase">
+            {/* Format toggle: 80mm thermal vs A4 invoice */}
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase">Format:</span>
+              <button
+                onClick={() => setPrintFormat("thermal")}
+                className={`px-3 py-1 rounded-xl text-xs font-semibold cursor-pointer ${
+                  printFormat === "thermal"
+                    ? "bg-primary text-primary-foreground"
+                    : "border border-border text-muted-foreground"
+                }`}
+              >
+                80mm Thermal POS Slip
+              </button>
+              <button
+                onClick={() => setPrintFormat("a4")}
+                className={`px-3 py-1 rounded-xl text-xs font-semibold cursor-pointer ${
+                  printFormat === "a4"
+                    ? "bg-primary text-primary-foreground"
+                    : "border border-border text-muted-foreground"
+                }`}
+              >
+                A4 Tax Sheet
+              </button>
+            </div>
+
+            {/* Printable Invoice Container */}
+            <div
+              id="printable-pos-receipt"
+              className={`p-4 rounded-2xl bg-background border border-border text-xs font-sans space-y-3 ${
+                printFormat === "thermal" ? "max-w-sm mx-auto font-mono text-[11px]" : "w-full"
+              }`}
+            >
+              {/* Header */}
+              <div className="text-center pb-2 border-b border-dashed border-border space-y-0.5">
+                <h2 className="text-base font-black uppercase text-foreground tracking-tight">
                   Suriya Mobiles
                 </h2>
-                <p className="text-[11px] text-muted-foreground">
-                  Premium Mobile Retail & Service Lounge
+                <p className="text-[10px] text-muted-foreground">
+                  Retail Showroom & Apple / Android Service Lounge
                 </p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
-                  128, 2nd Avenue, Anna Nagar, Chennai — 600040
+                <p className="text-[9px] text-muted-foreground">
+                  128, 2nd Avenue, Anna Nagar, Chennai — 600040 | Ph: +91 98401 99999
                 </p>
-                <p className="text-[10px] font-mono font-semibold text-foreground mt-0.5">
-                  GSTIN: 33AAAAA0000A1Z5 | Phone: +91 98401 99999
-                </p>
-                <div className="inline-block px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 font-bold text-[10px] mt-1.5 uppercase">
-                  Original Tax Invoice (B2C)
-                </div>
+                {lastInvoice.invoiceType === "TAX_INVOICE" ? (
+                  <div className="pt-1">
+                    <p className="text-[10px] font-bold text-sky-400">GSTIN: 33AAAAA0000A1Z5</p>
+                    <span className="inline-block px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 font-bold text-[9px] uppercase mt-0.5">
+                      Original Tax Invoice (B2C/B2B)
+                    </span>
+                  </div>
+                ) : (
+                  <div className="pt-1">
+                    <span className="inline-block px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 font-bold text-[9px] uppercase">
+                      Retail Cash Estimate / Normal Bill
+                    </span>
+                  </div>
+                )}
               </div>
 
-              {/* Invoice Meta */}
-              <div className="grid grid-cols-2 gap-2 text-[11px] py-1 border-b border-dashed border-border">
+              {/* Meta */}
+              <div className="grid grid-cols-2 gap-2 text-[10px] py-1 border-b border-dashed border-border">
                 <div>
-                  <span className="text-muted-foreground">Invoice No: </span>
-                  <span className="font-mono font-bold text-foreground">{lastInvoice.invoiceNumber}</span>
-                  <br />
-                  <span className="text-muted-foreground">Date: </span>
-                  <span className="font-medium text-foreground">{lastInvoice.date}</span>
+                  <p>
+                    <span className="text-muted-foreground">Bill #:</span>{" "}
+                    <span className="font-bold text-foreground">{lastInvoice.invoiceNumber}</span>
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground">Date:</span> {lastInvoice.date}
+                  </p>
                 </div>
                 <div className="text-right">
-                  <span className="text-muted-foreground">Customer: </span>
-                  <span className="font-bold text-foreground">{lastInvoice.customerName}</span>
-                  <br />
-                  <span className="text-muted-foreground">Phone: </span>
-                  <span className="font-medium text-foreground">{lastInvoice.customerPhone}</span>
+                  <p>
+                    <span className="text-muted-foreground">Customer:</span>{" "}
+                    <span className="font-bold text-foreground">{lastInvoice.customerName}</span>
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground">Phone:</span> {lastInvoice.customerPhone}
+                  </p>
+                  {lastInvoice.customerGstin && (
+                    <p className="text-sky-400 font-bold">GSTIN: {lastInvoice.customerGstin}</p>
+                  )}
                 </div>
               </div>
 
-              {/* Items Table */}
-              <div className="py-2">
-                <table className="w-full text-left">
-                  <thead className="border-b border-border text-muted-foreground text-[10px] uppercase font-semibold">
+              {/* Line Items */}
+              <div className="py-1">
+                <table className="w-full text-left text-[10px]">
+                  <thead className="border-b border-border/80 uppercase text-[9px] text-muted-foreground font-semibold">
                     <tr>
-                      <th className="pb-1.5">Item & IMEI</th>
-                      <th className="pb-1.5 text-center">Qty</th>
-                      <th className="pb-1.5 text-right">Rate</th>
-                      <th className="pb-1.5 text-right">Amount</th>
+                      <th className="pb-1">Item & Details</th>
+                      <th className="pb-1 text-center">Qty</th>
+                      <th className="pb-1 text-right">Rate</th>
+                      <th className="pb-1 text-right">Total</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border/40 text-[11px]">
-                    {lastInvoice.items.map((it: CartLineItem, i: number) => (
-                      <tr key={i} className="py-1.5">
-                        <td className="py-1.5 pr-2">
-                          <p className="font-semibold text-foreground">{it.product.name}</p>
+                  <tbody className="divide-y divide-border/40">
+                    {lastInvoice.items.map((it, idx) => (
+                      <tr key={idx} className="py-1">
+                        <td className="py-1 pr-1">
+                          <p className="font-bold text-foreground">{it.product.name}</p>
                           {it.selectedImei && (
-                            <p className="text-[10px] font-mono text-sky-400">
-                              IMEI: {it.selectedImei}
+                            <p className="text-[9px] text-sky-400 font-mono">IMEI: {it.selectedImei}</p>
+                          )}
+                          {lastInvoice.invoiceType === "TAX_INVOICE" && (
+                            <p className="text-[8px] text-muted-foreground font-mono">
+                              HSN: {it.product.hsnCode} | GST: {it.taxRatePercent}%
                             </p>
                           )}
-                          <p className="text-[9px] text-muted-foreground">HSN: {it.product.hsnCode}</p>
                         </td>
-                        <td className="py-1.5 text-center font-medium">{it.qty}</td>
-                        <td className="py-1.5 text-right">{formatINR(it.unitPricePaise)}</td>
-                        <td className="py-1.5 text-right font-bold">
+                        <td className="py-1 text-center font-medium">{it.qty}</td>
+                        <td className="py-1 text-right">{formatINR(it.unitPricePaise)}</td>
+                        <td className="py-1 text-right font-bold">
                           {formatINR(it.unitPricePaise * it.qty)}
                         </td>
                       </tr>
@@ -730,47 +859,51 @@ export default function POSBillingPage() {
                 </table>
               </div>
 
-              {/* Tax Breakup & Grand Total */}
-              <div className="pt-2 border-t border-dashed border-border space-y-1 text-right text-[11px]">
+              {/* Tax Breakup / Totals */}
+              <div className="pt-2 border-t border-dashed border-border space-y-1 text-right text-[10px]">
                 <div className="flex justify-between text-muted-foreground">
-                  <span>Taxable Value:</span>
-                  <span>{formatINR(lastInvoice.totals.taxableAmountPaise)}</span>
+                  <span>Subtotal Amount:</span>
+                  <span>{formatINR(lastInvoice.totals.subtotalPaise)}</span>
                 </div>
-                <div className="flex justify-between text-muted-foreground">
-                  <span>CGST (9%):</span>
-                  <span>{formatINR(lastInvoice.totals.totalCgstPaise)}</span>
+
+                {lastInvoice.invoiceType === "TAX_INVOICE" && (
+                  <>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Central GST (CGST):</span>
+                      <span>{formatINR(lastInvoice.totals.totalCgstPaise)}</span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>State GST (SGST):</span>
+                      <span>{formatINR(lastInvoice.totals.totalSgstPaise)}</span>
+                    </div>
+                  </>
+                )}
+
+                <div className="flex justify-between font-black text-xs text-foreground pt-1 border-t border-border">
+                  <span>Grand Total Net:</span>
+                  <span className="text-emerald-400">{formatINR(lastInvoice.totals.grandTotalPaise)}</span>
                 </div>
-                <div className="flex justify-between text-muted-foreground">
-                  <span>SGST (9%):</span>
-                  <span>{formatINR(lastInvoice.totals.totalSgstPaise)}</span>
-                </div>
-                <div className="flex justify-between font-black text-sm text-foreground pt-1 border-t border-border">
-                  <span>Grand Total (Net):</span>
-                  <span className="text-emerald-500">{formatINR(lastInvoice.totals.grandTotalPaise)}</span>
-                </div>
-                <div className="flex justify-between text-[10px] text-muted-foreground">
-                  <span>Payment Mode:</span>
-                  <span className="font-semibold">{lastInvoice.paymentMethod} (PAID)</span>
+                <div className="flex justify-between text-[9px] text-muted-foreground">
+                  <span>Settlement Mode:</span>
+                  <span className="font-bold text-foreground">{lastInvoice.paymentMethod} (PAID)</span>
                 </div>
               </div>
 
-              {/* Declaration / Guarantee terms */}
-              <div className="pt-3 border-t border-dashed border-border text-[9px] text-muted-foreground text-center space-y-0.5">
-                <p>Terms: Goods once sold carry brand manufacturer warranty against hardware defects.</p>
-                <p>Thank you for shopping at Suriya Mobiles! Have a great day.</p>
+              {/* Guarantee terms */}
+              <div className="pt-2 border-t border-dashed border-border text-[8px] text-center text-muted-foreground space-y-0.5">
+                <p>Goods once sold carry authorized brand warranty. Please retain bill for service.</p>
+                <p>Thank you for choosing Suriya Mobiles!</p>
               </div>
             </div>
 
             {/* Action buttons */}
-            <div className="mt-6 flex items-center justify-end gap-3 pt-4 border-t border-border">
+            <div className="mt-5 flex items-center justify-end gap-2 pt-3 border-t border-border">
               <button
-                onClick={() => {
-                  window.print();
-                }}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground font-semibold text-xs shadow-md cursor-pointer"
+                onClick={() => window.print()}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs shadow-md cursor-pointer"
               >
-                <Printer className="w-4 h-4" />
-                <span>Print Invoice</span>
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print Document</span>
               </button>
               <button
                 onClick={() => {
@@ -780,7 +913,7 @@ export default function POSBillingPage() {
                 }}
                 className="px-4 py-2 rounded-xl border border-border text-foreground font-semibold text-xs hover:bg-muted cursor-pointer"
               >
-                Close & Next Bill
+                Next Customer Bill
               </button>
             </div>
           </div>

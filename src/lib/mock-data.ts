@@ -9,7 +9,8 @@ export interface ProductItem {
   mrpPaise: number;
   sellingPricePaise: number;
   costPricePaise: number;
-  taxRatePercent: number; // e.g. 18 for phones
+  taxRatePercent: number; // e.g. 18 for phones, 0 for Non-GST
+  isGstProduct?: boolean; // true = Tax Invoice eligible; false = Normal Cash Bill / Estimate
   stockQty: number;
   lowStockThreshold: number;
   hasSerial: boolean; // requires IMEI/Serial number
@@ -23,6 +24,7 @@ export interface ProductItem {
 export interface SaleInvoice {
   id: string;
   invoiceNumber: string;
+  invoiceType?: "TAX_INVOICE" | "RETAIL_ESTIMATE";
   date: string;
   customerName: string;
   customerPhone: string;
@@ -42,6 +44,7 @@ export interface SaleInvoice {
     qty: number;
     unitPricePaise: number;
     taxRatePercent: number;
+    isGstItem?: boolean;
     totalPaise: number;
   }[];
   cashierName: string;
@@ -215,18 +218,96 @@ export const INITIAL_PRODUCTS: ProductItem[] = [
     sellingPricePaise: 799900,
     costPricePaise: 450000,
     taxRatePercent: 18,
+    isGstProduct: true,
     stockQty: 99,
     lowStockThreshold: 5,
     hasSerial: false,
     imageUrl: "https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=600&auto=format&fit=crop&q=80",
     description: "Original specification OLED display replacement with 6 months warranty, True Tone reprogramming included.",
+  },
+  {
+    id: "prod-9",
+    name: "9D Curved Tempered Glass (Non-GST / Normal Cash Bill)",
+    brand: "Generic",
+    category: "accessories",
+    sku: "TG-9D-GEN",
+    hsnCode: "70071900",
+    barcode: "890123456009",
+    mrpPaise: 29900,
+    sellingPricePaise: 15000,
+    costPricePaise: 5000,
+    taxRatePercent: 0,
+    isGstProduct: false,
+    stockQty: 150,
+    lowStockThreshold: 20,
+    hasSerial: false,
+    imageUrl: "https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?w=600&auto=format&fit=crop&q=80",
+    description: "Edge-to-edge tempered glass protector. Eligible for normal retail estimate bill.",
+  },
+  {
+    id: "prod-10",
+    name: "Mobile Stand & OTG Adapter Kit (Non-GST Item)",
+    brand: "Generic",
+    category: "accessories",
+    sku: "ACC-STAND-01",
+    hsnCode: "39269099",
+    barcode: "890123456010",
+    mrpPaise: 19900,
+    sellingPricePaise: 9900,
+    costPricePaise: 3500,
+    taxRatePercent: 0,
+    isGstProduct: false,
+    stockQty: 80,
+    lowStockThreshold: 10,
+    hasSerial: false,
+    imageUrl: "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=600&auto=format&fit=crop&q=80",
+    description: "Multi-angle desktop mobile stand with high speed OTG connector. Non-tax item.",
   }
 ];
 
 export const INITIAL_SALES: SaleInvoice[] = [
   {
+    id: "inv-1003",
+    invoiceNumber: "EST-2026-0012",
+    invoiceType: "RETAIL_ESTIMATE",
+    date: "2026-10-22 16:15",
+    customerName: "Senthil Nathan (Cash Customer)",
+    customerPhone: "9843456789",
+    paymentMethod: "CASH",
+    paymentStatus: "PAID",
+    subtotalPaise: 24900,
+    cgstPaise: 0,
+    sgstPaise: 0,
+    discountPaise: 0,
+    roundOffPaise: 0,
+    grandTotalPaise: 24900,
+    items: [
+      {
+        productId: "prod-9",
+        productName: "9D Curved Tempered Glass (Non-GST / Normal Cash Bill)",
+        qty: 1,
+        unitPricePaise: 15000,
+        taxRatePercent: 0,
+        isGstItem: false,
+        totalPaise: 15000,
+      },
+      {
+        productId: "prod-10",
+        productName: "Mobile Stand & OTG Adapter Kit (Non-GST Item)",
+        qty: 1,
+        unitPricePaise: 9900,
+        taxRatePercent: 0,
+        isGstItem: false,
+        totalPaise: 9900,
+      }
+    ],
+    cashierName: "Suriya (Cashier)",
+    branchName: "Main Showroom",
+  },
+  {
     id: "inv-1001",
     invoiceNumber: "INV-2026-0042",
+    invoiceType: "TAX_INVOICE",
     date: "2026-10-22 14:35",
     customerName: "Rajesh Kumar",
     customerPhone: "9840123456",
