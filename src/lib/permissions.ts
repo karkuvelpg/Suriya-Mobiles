@@ -82,7 +82,7 @@ export type Permission =
   | "audit.override";
 
 // ─── Role Permission Map ───────────────────────────────────────────────────────
-const ROLE_PERMISSIONS: Record<Exclude<UserRole, "owner">, Permission[]> = {
+export const ROLE_PERMISSIONS: Record<Exclude<UserRole, "owner">, Permission[]> = {
   admin: [
     "products.view", "products.create", "products.edit", "products.publish",
     "inventory.view", "inventory.adjust", "inventory.transfer", "inventory.receive_purchase",
