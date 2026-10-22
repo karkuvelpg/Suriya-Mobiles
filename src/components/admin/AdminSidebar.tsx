@@ -15,7 +15,9 @@ import {
   ShoppingBag,
   Smartphone,
   ChevronRight,
+  LogOut,
 } from "lucide-react";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -161,22 +163,42 @@ export function AdminSidebar({
         })}
       </div>
 
-      {/* Footer link to Consumer E-Commerce Store */}
-      <div className="p-3 border-t border-border/60">
+      {/* Footer link to Consumer E-Commerce Store & Sign Out */}
+      <div className="p-3 border-t border-border/60 space-y-1.5">
         <Link
           href="/"
           target="_blank"
-          className="flex items-center justify-between px-3.5 py-3 rounded-xl border border-border/80 bg-background/50 hover:bg-accent/40 transition-colors text-xs font-medium"
+          className="flex items-center justify-between px-3.5 py-2.5 rounded-xl border border-border/80 bg-background/50 hover:bg-accent/40 transition-colors text-xs font-medium"
         >
           <div className="flex items-center gap-2.5">
             <ShoppingBag className="w-4 h-4 text-sky-500" />
             <div>
-              <p className="font-semibold text-foreground">Customer Store</p>
-              <p className="text-[10px] text-muted-foreground">Open online catalog</p>
+              <p className="font-semibold text-foreground text-xs">Customer Store</p>
+              <p className="text-[9px] text-muted-foreground">Open online catalog</p>
             </div>
           </div>
           <span className="text-[10px] text-sky-400 font-semibold">Live ↗</span>
         </Link>
+
+        <button
+          onClick={async () => {
+            try {
+              const supabase = createSupabaseBrowserClient();
+              await supabase.auth.signOut();
+            } catch (e) {
+              console.warn(e);
+            }
+            document.cookie = "demo_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+            window.location.href = "/login";
+          }}
+          className="w-full flex items-center justify-between px-3.5 py-2 rounded-xl text-rose-500 hover:bg-rose-500/10 transition-colors text-xs font-bold"
+        >
+          <div className="flex items-center gap-2">
+            <LogOut className="w-4 h-4" />
+            <span>Sign Out</span>
+          </div>
+          <span className="text-[10px] text-muted-foreground font-normal">Exit</span>
+        </button>
       </div>
     </aside>
   );

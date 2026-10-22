@@ -3,25 +3,111 @@
 import { useState } from "react";
 import {
   BarChart3,
-  Calendar,
   Download,
-  Receipt,
-  TrendingUp,
-  Percent,
+  Calendar,
   CheckCircle2,
   FileSpreadsheet,
 } from "lucide-react";
 import { formatINR } from "@/lib/finance";
 
+interface HsnSummaryRow {
+  hsnCode: string;
+  description: string;
+  gstRate: number;
+  taxablePaise: number;
+  cgstPaise: number;
+  sgstPaise: number;
+  totalTaxPaise: number;
+}
+
+const HSN_DATA: HsnSummaryRow[] = [
+  {
+    hsnCode: "85171300",
+    description: "Smartphones & Cellular phones",
+    gstRate: 18,
+    taxablePaise: 210000000,
+    cgstPaise: 18900000,
+    sgstPaise: 18900000,
+    totalTaxPaise: 37800000,
+  },
+  {
+    hsnCode: "85183000",
+    description: "Headphones, Earphones & Audio",
+    gstRate: 18,
+    taxablePaise: 22000000,
+    cgstPaise: 1980000,
+    sgstPaise: 1980000,
+    totalTaxPaise: 3960000,
+  },
+  {
+    hsnCode: "998713",
+    description: "Repair & Maintenance of Phones",
+    gstRate: 18,
+    taxablePaise: 14500000,
+    cgstPaise: 1305000,
+    sgstPaise: 1305000,
+    totalTaxPaise: 2610000,
+  },
+];
+
 export default function ReportsPage() {
   const [selectedMonth, setSelectedMonth] = useState("2026-10");
+  const [isExporting, setIsExporting] = useState(false);
 
   // GST metrics
-  const taxableTurnoverPaise = 246500000; // ~₹24.65L
-  const cgstCollectedPaise = 22185000;   // ~₹2.21L
-  const sgstCollectedPaise = 22185000;   // ~₹2.21L
+  const taxableTurnoverPaise = HSN_DATA.reduce((acc, row) => acc + row.taxablePaise, 0);
+  const cgstCollectedPaise = HSN_DATA.reduce((acc, row) => acc + row.cgstPaise, 0);
+  const sgstCollectedPaise = HSN_DATA.reduce((acc, row) => acc + row.sgstPaise, 0);
   const totalGstPaise = cgstCollectedPaise + sgstCollectedPaise;
   const grossSalesPaise = taxableTurnoverPaise + totalGstPaise;
+
+  const exportGstr1Csv = () => {
+    setIsExporting(true);
+
+    const headers = [
+      "HSN/SAC",
+      "Description",
+      "GST Rate (%)",
+      "Taxable Value (INR)",
+      "CGST (INR)",
+      "SGST (INR)",
+      "Total Tax (INR)",
+    ];
+
+    const rows = HSN_DATA.map((r) => [
+      r.hsnCode,
+      `"${r.description}"`,
+      `${r.gstRate}%`,
+      (r.taxablePaise / 100).toFixed(2),
+      (r.cgstPaise / 100).toFixed(2),
+      (r.sgstPaise / 100).toFixed(2),
+      (r.totalTaxPaise / 100).toFixed(2),
+    ]);
+
+    const totalsRow = [
+      "TOTAL",
+      "All Taxable Categories",
+      "18% Avg",
+      (taxableTurnoverPaise / 100).toFixed(2),
+      (cgstCollectedPaise / 100).toFixed(2),
+      (sgstCollectedPaise / 100).toFixed(2),
+      (totalGstPaise / 100).toFixed(2),
+    ];
+
+    const csvContent =
+      "data:text/csv;charset=utf-8," +
+      [headers.join(","), ...rows.map((e) => e.join(",")), totalsRow.join(",")].join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Suriya_Mobiles_GSTR1_${selectedMonth}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    setTimeout(() => setIsExporting(false), 800);
+  };
 
   return (
     <div className="space-y-6">
@@ -46,9 +132,13 @@ export default function ReportsPage() {
             onChange={(e) => setSelectedMonth(e.target.value)}
             className="h-10 px-3 rounded-xl border border-border bg-card text-xs font-semibold focus:outline-none text-foreground"
           />
-          <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-xs shadow-md">
+          <button
+            onClick={exportGstr1Csv}
+            disabled={isExporting}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs shadow-md transition-all active:scale-95 disabled:opacity-50"
+          >
             <Download className="w-3.5 h-3.5" />
-            <span>Export GSTR-1 Excel</span>
+            <span>{isExporting ? "Exporting..." : "Export GSTR-1 CSV"}</span>
           </button>
         </div>
       </div>
@@ -114,33 +204,19 @@ export default function ReportsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border/40 font-mono text-xs">
-              <tr className="hover:bg-muted/30">
-                <td className="py-3 font-bold text-foreground">85171300</td>
-                <td className="py-3 font-sans text-muted-foreground">Smartphones & Cellular phones</td>
-                <td className="py-3 text-center">18%</td>
-                <td className="py-3 text-right">{formatINR(210000000)}</td>
-                <td className="py-3 text-right">{formatINR(18900000)}</td>
-                <td className="py-3 text-right">{formatINR(18900000)}</td>
-                <td className="py-3 text-right font-bold text-foreground">{formatINR(37800000)}</td>
-              </tr>
-              <tr className="hover:bg-muted/30">
-                <td className="py-3 font-bold text-foreground">85183000</td>
-                <td className="py-3 font-sans text-muted-foreground">Headphones, Earphones & Audio</td>
-                <td className="py-3 text-center">18%</td>
-                <td className="py-3 text-right">{formatINR(22000000)}</td>
-                <td className="py-3 text-right">{formatINR(1980000)}</td>
-                <td className="py-3 text-right">{formatINR(1980000)}</td>
-                <td className="py-3 text-right font-bold text-foreground">{formatINR(3960000)}</td>
-              </tr>
-              <tr className="hover:bg-muted/30">
-                <td className="py-3 font-bold text-foreground">998713</td>
-                <td className="py-3 font-sans text-muted-foreground">Repair & Maintenance of Phones</td>
-                <td className="py-3 text-center">18%</td>
-                <td className="py-3 text-right">{formatINR(14500000)}</td>
-                <td className="py-3 text-right">{formatINR(1305000)}</td>
-                <td className="py-3 text-right">{formatINR(1305000)}</td>
-                <td className="py-3 text-right font-bold text-foreground">{formatINR(2610000)}</td>
-              </tr>
+              {HSN_DATA.map((row) => (
+                <tr key={row.hsnCode} className="hover:bg-muted/30">
+                  <td className="py-3 font-bold text-foreground">{row.hsnCode}</td>
+                  <td className="py-3 font-sans text-muted-foreground">{row.description}</td>
+                  <td className="py-3 text-center">{row.gstRate}%</td>
+                  <td className="py-3 text-right">{formatINR(row.taxablePaise)}</td>
+                  <td className="py-3 text-right">{formatINR(row.cgstPaise)}</td>
+                  <td className="py-3 text-right">{formatINR(row.sgstPaise)}</td>
+                  <td className="py-3 text-right font-bold text-foreground">
+                    {formatINR(row.totalTaxPaise)}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>

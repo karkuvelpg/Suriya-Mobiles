@@ -1,25 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   FileSpreadsheet,
   Search,
   Printer,
-  RotateCcw,
   Eye,
-  CheckCircle2,
-  Calendar,
   X,
-  Smartphone,
+  Download,
 } from "lucide-react";
 import { formatINR } from "@/lib/finance";
 import { INITIAL_SALES, SaleInvoice } from "@/lib/mock-data";
 
-export default function SalesHistoryPage() {
-  const [sales, setSales] = useState<SaleInvoice[]>(INITIAL_SALES);
+function SalesHistoryContent() {
+  const searchParams = useSearchParams();
+  const [sales] = useState<SaleInvoice[]>(INITIAL_SALES);
   const [search, setSearch] = useState("");
   const [methodFilter, setMethodFilter] = useState("all");
   const [selectedInvoice, setSelectedInvoice] = useState<SaleInvoice | null>(null);
+
+  // Auto-open invoice if specified in URL query
+  useEffect(() => {
+    const invQuery = searchParams.get("inv");
+    if (invQuery) {
+      const match = sales.find((s) => s.invoiceNumber.toLowerCase() === invQuery.toLowerCase());
+      if (match) setSelectedInvoice(match);
+    }
+  }, [searchParams, sales]);
 
   const filtered = sales.filter((s) => {
     const matchMethod = methodFilter === "all" || s.paymentMethod === methodFilter;
@@ -30,6 +38,46 @@ export default function SalesHistoryPage() {
       s.items.some((it) => it.imei?.includes(search) || it.productName.toLowerCase().includes(search.toLowerCase()));
     return matchMethod && matchSearch;
   });
+
+  const exportSalesCsv = () => {
+    const headers = [
+      "Invoice Number",
+      "Date",
+      "Customer Name",
+      "Customer Phone",
+      "Payment Mode",
+      "Status",
+      "Taxable Subtotal (INR)",
+      "CGST (INR)",
+      "SGST (INR)",
+      "Grand Total (INR)",
+    ];
+
+    const rows = filtered.map((s) => [
+      s.invoiceNumber,
+      `"${s.date}"`,
+      `"${s.customerName}"`,
+      s.customerPhone,
+      s.paymentMethod,
+      s.paymentStatus,
+      (s.subtotalPaise / 100).toFixed(2),
+      (s.cgstPaise / 100).toFixed(2),
+      (s.sgstPaise / 100).toFixed(2),
+      (s.grandTotalPaise / 100).toFixed(2),
+    ]);
+
+    const csvContent =
+      "data:text/csv;charset=utf-8," +
+      [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Suriya_Mobiles_Sales_Register.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="space-y-6">
@@ -46,6 +94,14 @@ export default function SalesHistoryPage() {
             Complete audit trail of all in-store POS and online sales with GST breakup & reprint capability
           </p>
         </div>
+
+        <button
+          onClick={exportSalesCsv}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-card border border-border hover:bg-muted text-foreground text-xs font-semibold shadow-sm transition-all"
+        >
+          <Download className="w-3.5 h-3.5 text-sky-400" />
+          <span>Export Sales CSV</span>
+        </button>
       </div>
 
       {/* Search and filters */}
@@ -142,7 +198,7 @@ export default function SalesHistoryPage() {
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => setSelectedInvoice(inv)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-border text-[11px] font-medium hover:bg-muted"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-border text-[11px] font-medium hover:bg-muted cursor-pointer"
                       >
                         <Eye className="w-3 h-3 text-sky-400" />
                         <span>View / Print</span>
@@ -162,7 +218,7 @@ export default function SalesHistoryPage() {
           <div className="relative w-full max-w-lg rounded-3xl border border-border bg-card p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setSelectedInvoice(null)}
-              className="absolute top-4 right-4 p-2 rounded-xl text-muted-foreground hover:text-foreground"
+              className="absolute top-4 right-4 p-2 rounded-xl text-muted-foreground hover:text-foreground cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -243,7 +299,7 @@ export default function SalesHistoryPage() {
             <div className="mt-6 flex justify-end gap-2 pt-3 border-t border-border">
               <button
                 onClick={() => window.print()}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground font-semibold text-xs"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground font-semibold text-xs cursor-pointer shadow-md"
               >
                 <Printer className="w-3.5 h-3.5" />
                 <span>Print Tax Invoice</span>
@@ -253,5 +309,13 @@ export default function SalesHistoryPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function SalesHistoryPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs text-muted-foreground">Loading invoices...</div>}>
+      <SalesHistoryContent />
+    </Suspense>
   );
 }

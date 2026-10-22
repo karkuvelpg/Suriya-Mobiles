@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Boxes,
   Plus,
@@ -8,15 +9,20 @@ import {
   Smartphone,
   X,
   Eye,
+  Trash2,
+  PlusCircle,
+  CheckCircle2,
 } from "lucide-react";
 import { formatINR } from "@/lib/finance";
 import { INITIAL_PRODUCTS, ProductItem } from "@/lib/mock-data";
 
-export default function InventoryPage() {
+function InventoryContent() {
+  const searchParams = useSearchParams();
   const [products, setProducts] = useState<ProductItem[]>(INITIAL_PRODUCTS);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [selectedProductSerials, setSelectedProductSerials] = useState<ProductItem | null>(null);
+  const [newSerialInput, setNewSerialInput] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
 
   // Form state for adding new product
@@ -30,12 +36,19 @@ export default function InventoryPage() {
   const [newProdStock, setNewProdStock] = useState("");
   const [newProdHasSerial, setNewProdHasSerial] = useState(true);
 
+  // Read URL query search parameter
+  useEffect(() => {
+    const q = searchParams.get("search");
+    if (q) setSearch(q);
+  }, [searchParams]);
+
   const filtered = products.filter((p) => {
     const matchCat = categoryFilter === "all" || p.category === categoryFilter;
     const matchSearch =
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.sku.toLowerCase().includes(search.toLowerCase()) ||
-      p.brand.toLowerCase().includes(search.toLowerCase());
+      p.brand.toLowerCase().includes(search.toLowerCase()) ||
+      (p.availableSerials && p.availableSerials.some((s) => s.includes(search)));
     return matchCat && matchSearch;
   });
 
@@ -71,7 +84,6 @@ export default function InventoryPage() {
 
     setProducts([newProduct, ...products]);
     setShowAddModal(false);
-    // Reset form
     setNewProdName("");
     setNewProdBrand("");
     setNewProdSellingPrice("");
@@ -89,6 +101,36 @@ export default function InventoryPage() {
         return p;
       })
     );
+  };
+
+  const deleteProduct = (productId: string, name: string) => {
+    if (confirm(`Are you sure you want to remove "${name}" from inventory?`)) {
+      setProducts(products.filter((p) => p.id !== productId));
+    }
+  };
+
+  const handleAddNewSerial = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProductSerials || !newSerialInput.trim()) return;
+
+    const trimmed = newSerialInput.trim();
+    const updatedSerials = [...(selectedProductSerials.availableSerials || []), trimmed];
+
+    setProducts((prev) =>
+      prev.map((p) =>
+        p.id === selectedProductSerials.id
+          ? { ...p, availableSerials: updatedSerials, stockQty: p.stockQty + 1 }
+          : p
+      )
+    );
+
+    setSelectedProductSerials({
+      ...selectedProductSerials,
+      availableSerials: updatedSerials,
+      stockQty: selectedProductSerials.stockQty + 1,
+    });
+
+    setNewSerialInput("");
   };
 
   return (
@@ -109,7 +151,7 @@ export default function InventoryPage() {
 
         <button
           onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs shadow-md shadow-primary/20 transition-all hover:scale-105 active:scale-95"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs shadow-md shadow-primary/20 transition-all hover:scale-105 active:scale-95 cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           <span>Add New Stock / Product</span>
@@ -122,7 +164,7 @@ export default function InventoryPage() {
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search by product name, brand, SKU or barcode..."
+            placeholder="Search by product name, brand, SKU or IMEI barcode..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full h-10 pl-10 pr-4 rounded-xl border border-border/80 bg-card/60 focus:bg-background text-xs font-medium focus:border-primary focus:outline-none"
@@ -133,7 +175,7 @@ export default function InventoryPage() {
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="h-10 px-3 rounded-xl border border-border/80 bg-card/60 text-xs font-medium focus:outline-none text-foreground"
+            className="h-10 px-3 rounded-xl border border-border/80 bg-card/60 text-xs font-medium focus:outline-none text-foreground cursor-pointer"
           >
             <option value="all">All Categories</option>
             <option value="smartphones">Smartphones</option>
@@ -225,7 +267,7 @@ export default function InventoryPage() {
                       {product.hasSerial ? (
                         <button
                           onClick={() => setSelectedProductSerials(product)}
-                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-400 hover:underline"
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-400 hover:underline cursor-pointer"
                         >
                           <Eye className="w-3.5 h-3.5" />
                           <span>{product.availableSerials?.length || 0} Serials</span>
@@ -235,22 +277,29 @@ export default function InventoryPage() {
                       )}
                     </td>
 
-                    {/* Stock quick adjust */}
+                    {/* Actions: Stock quick adjust & delete */}
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         <button
                           onClick={() => adjustStock(product.id, -1)}
-                          className="w-6 h-6 rounded-md bg-muted hover:bg-muted/80 flex items-center justify-center font-bold text-xs"
+                          className="w-6 h-6 rounded-md bg-muted hover:bg-muted/80 flex items-center justify-center font-bold text-xs cursor-pointer"
                           title="Reduce stock"
                         >
                           -
                         </button>
                         <button
                           onClick={() => adjustStock(product.id, 1)}
-                          className="w-6 h-6 rounded-md bg-muted hover:bg-muted/80 flex items-center justify-center font-bold text-xs"
+                          className="w-6 h-6 rounded-md bg-muted hover:bg-muted/80 flex items-center justify-center font-bold text-xs cursor-pointer"
                           title="Increase stock"
                         >
                           +
+                        </button>
+                        <button
+                          onClick={() => deleteProduct(product.id, product.name)}
+                          className="w-6 h-6 rounded-md hover:bg-rose-500/15 text-muted-foreground hover:text-rose-400 flex items-center justify-center transition-colors cursor-pointer ml-1"
+                          title="Delete product"
+                        >
+                          <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
                     </td>
@@ -268,21 +317,22 @@ export default function InventoryPage() {
           <div className="relative w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-2xl">
             <button
               onClick={() => setSelectedProductSerials(null)}
-              className="absolute top-4 right-4 p-2 rounded-xl text-muted-foreground hover:text-foreground"
+              className="absolute top-4 right-4 p-2 rounded-xl text-muted-foreground hover:text-foreground cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
-            <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center gap-2 mb-2">
               <Smartphone className="w-5 h-5 text-sky-400" />
               <h3 className="font-bold text-base text-foreground">
-                Registered IMEIs for Device
+                Registered IMEIs in Vault
               </h3>
             </div>
             <p className="text-xs text-muted-foreground font-semibold mb-4">
               {selectedProductSerials.name}
             </p>
 
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+            {/* List of current IMEIs */}
+            <div className="space-y-2 max-h-52 overflow-y-auto pr-1 mb-4">
               {selectedProductSerials.availableSerials &&
               selectedProductSerials.availableSerials.length > 0 ? (
                 selectedProductSerials.availableSerials.map((imei, idx) => (
@@ -303,6 +353,24 @@ export default function InventoryPage() {
                 </p>
               )}
             </div>
+
+            {/* Fast Add New IMEI form */}
+            <form onSubmit={handleAddNewSerial} className="pt-3 border-t border-border flex gap-2">
+              <input
+                type="text"
+                placeholder="Scan or type new 15-digit IMEI"
+                value={newSerialInput}
+                onChange={(e) => setNewSerialInput(e.target.value)}
+                className="flex-1 h-9 px-3 rounded-xl border border-border bg-background text-xs font-mono focus:border-primary focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={!newSerialInput.trim()}
+                className="px-3.5 py-1.5 rounded-xl bg-primary text-primary-foreground font-bold text-xs shadow-sm disabled:opacity-40 cursor-pointer"
+              >
+                Add IMEI
+              </button>
+            </form>
           </div>
         </div>
       )}
@@ -313,7 +381,7 @@ export default function InventoryPage() {
           <div className="relative w-full max-w-lg rounded-3xl border border-border bg-card p-6 shadow-2xl">
             <button
               onClick={() => setShowAddModal(false)}
-              className="absolute top-4 right-4 p-2 rounded-xl text-muted-foreground hover:text-foreground"
+              className="absolute top-4 right-4 p-2 rounded-xl text-muted-foreground hover:text-foreground cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -363,7 +431,7 @@ export default function InventoryPage() {
                         e.target.value as "smartphones" | "accessories" | "audio" | "wearables"
                       )
                     }
-                    className="w-full mt-1 h-9 px-3 rounded-xl border border-border bg-background focus:border-primary focus:outline-none text-foreground"
+                    className="w-full mt-1 h-9 px-3 rounded-xl border border-border bg-background focus:border-primary focus:outline-none text-foreground cursor-pointer"
                   >
                     <option value="smartphones">Smartphones</option>
                     <option value="accessories">Accessories</option>
@@ -419,7 +487,7 @@ export default function InventoryPage() {
                   id="hasSerialCheck"
                   checked={newProdHasSerial}
                   onChange={(e) => setNewProdHasSerial(e.target.checked)}
-                  className="rounded text-primary focus:ring-primary"
+                  className="rounded text-primary focus:ring-primary cursor-pointer"
                 />
                 <label htmlFor="hasSerialCheck" className="text-xs text-foreground cursor-pointer">
                   Requires 15-digit IMEI Serial tracking (Smartphones & Cellular devices)
@@ -430,13 +498,13 @@ export default function InventoryPage() {
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 rounded-xl border border-border text-xs font-semibold hover:bg-muted"
+                  className="px-4 py-2 rounded-xl border border-border text-xs font-semibold hover:bg-muted cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold shadow-md"
+                  className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold shadow-md cursor-pointer"
                 >
                   Add Product to Inventory
                 </button>
@@ -446,5 +514,13 @@ export default function InventoryPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function InventoryPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs text-muted-foreground">Loading stock...</div>}>
+      <InventoryContent />
+    </Suspense>
   );
 }

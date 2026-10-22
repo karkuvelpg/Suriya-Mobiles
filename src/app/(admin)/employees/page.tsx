@@ -12,6 +12,9 @@ import {
   Mail,
   Building,
   Crown,
+  X,
+  Phone,
+  Power,
 } from "lucide-react";
 import { UserRole, Permission, ROLE_PERMISSIONS } from "@/lib/permissions";
 
@@ -90,6 +93,7 @@ const PERMISSION_GROUPS: { group: string; permissions: { key: Permission; label:
     group: "Administrative & Financial",
     permissions: [
       { key: "reports.sales", label: "View Sales & Revenue Reports" },
+      { key: "reports.financial", label: "View Profit & Loss / Margins" },
       { key: "reports.tax", label: "Generate GST Filing Returns (GSTR-1)" },
       { key: "staff.edit", label: "Add/Edit Employee Roles" },
       { key: "settings.edit", label: "Edit Company Profile & GSTIN" },
@@ -98,13 +102,56 @@ const PERMISSION_GROUPS: { group: string; permissions: { key: Permission; label:
 ];
 
 export default function EmployeesPage() {
-  const [employees] = useState<Employee[]>(INITIAL_EMPLOYEES);
+  const [employees, setEmployees] = useState<Employee[]>(INITIAL_EMPLOYEES);
   const [selectedRole, setSelectedRole] = useState<UserRole>("cashier");
+  const [showInviteModal, setShowInviteModal] = useState(false);
+
+  // Invite Form State
+  const [newName, setNewName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newRole, setNewRole] = useState<UserRole>("cashier");
+  const [newBranch, setNewBranch] = useState("Main Branch - Anna Nagar");
 
   const hasPermission = (role: UserRole, perm: Permission) => {
     if (role === "owner") return true; // Owner has ALL permissions by architectural rule
     const allowed = ROLE_PERMISSIONS[role] || [];
     return allowed.includes(perm);
+  };
+
+  const handleInviteEmployee = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName.trim() || !newEmail.trim()) return;
+
+    const newEmp: Employee = {
+      id: `emp-${Date.now()}`,
+      name: newName.trim(),
+      email: newEmail.trim(),
+      phone: newPhone.trim() || "+91 98400 99999",
+      role: newRole,
+      branch: newBranch,
+      status: "ACTIVE",
+    };
+
+    setEmployees([...employees, newEmp]);
+    setShowInviteModal(false);
+    setNewName("");
+    setNewEmail("");
+    setNewPhone("");
+  };
+
+  const toggleEmployeeStatus = (id: string) => {
+    setEmployees((prev) =>
+      prev.map((emp) => {
+        if (emp.id === id && emp.role !== "owner") {
+          return {
+            ...emp,
+            status: emp.status === "ACTIVE" ? "INACTIVE" : "ACTIVE",
+          };
+        }
+        return emp;
+      })
+    );
   };
 
   return (
@@ -123,7 +170,10 @@ export default function EmployeesPage() {
           </p>
         </div>
 
-        <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs shadow-md shadow-primary/20 transition-all">
+        <button
+          onClick={() => setShowInviteModal(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs shadow-md shadow-primary/20 transition-all hover:scale-105 active:scale-95"
+        >
           <UserPlus className="w-4 h-4" />
           <span>Invite New Employee</span>
         </button>
@@ -134,43 +184,62 @@ export default function EmployeesPage() {
         {employees.map((emp) => (
           <div
             key={emp.id}
-            className="p-5 rounded-3xl border border-border/80 bg-card/60 backdrop-blur-xl shadow-sm space-y-3"
+            className="flex flex-col justify-between p-5 rounded-3xl border border-border/80 bg-card/60 backdrop-blur-xl shadow-sm space-y-3 hover:shadow-md transition-all"
           >
-            <div className="flex items-start justify-between">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-500 to-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-md">
-                {emp.name.slice(0, 2).toUpperCase()}
-              </div>
-              <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase ${
-                  emp.role === "owner"
-                    ? "bg-amber-500/15 text-amber-400 border-amber-500/30 flex items-center gap-1"
-                    : emp.role === "admin"
-                    ? "bg-violet-500/15 text-violet-400 border-violet-500/30"
-                    : emp.role === "cashier"
-                    ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                    : "bg-sky-500/15 text-sky-400 border-sky-500/30"
-                }`}
-              >
-                {emp.role === "owner" && <Crown className="w-2.5 h-2.5" />}
-                {emp.role}
-              </span>
-            </div>
-
             <div>
-              <h3 className="font-bold text-sm text-foreground">{emp.name}</h3>
-              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                <Mail className="w-3 h-3" /> {emp.email}
-              </p>
-              <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
-                <Building className="w-3 h-3" /> {emp.branch}
-              </p>
+              <div className="flex items-start justify-between">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-500 to-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-md">
+                  {emp.name.slice(0, 2).toUpperCase()}
+                </div>
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase ${
+                    emp.role === "owner"
+                      ? "bg-amber-500/15 text-amber-400 border-amber-500/30 flex items-center gap-1"
+                      : emp.role === "admin"
+                      ? "bg-violet-500/15 text-violet-400 border-violet-500/30"
+                      : emp.role === "cashier"
+                      ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                      : "bg-sky-500/15 text-sky-400 border-sky-500/30"
+                  }`}
+                >
+                  {emp.role === "owner" && <Crown className="w-2.5 h-2.5" />}
+                  {emp.role.replace("_", " ")}
+                </span>
+              </div>
+
+              <div className="mt-3">
+                <h3 className="font-bold text-sm text-foreground">{emp.name}</h3>
+                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                  <Mail className="w-3 h-3" /> {emp.email}
+                </p>
+                <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                  <Building className="w-3 h-3" /> {emp.branch}
+                </p>
+              </div>
             </div>
 
             <div className="pt-2 border-t border-border/50 flex items-center justify-between text-[10px]">
-              <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Active
+              <span
+                className={`font-semibold flex items-center gap-1 ${
+                  emp.status === "ACTIVE" ? "text-emerald-400" : "text-rose-400"
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    emp.status === "ACTIVE" ? "bg-emerald-400" : "bg-rose-400"
+                  }`}
+                />
+                {emp.status}
               </span>
-              <span className="text-muted-foreground font-mono">{emp.phone}</span>
+
+              {emp.role !== "owner" && (
+                <button
+                  onClick={() => toggleEmployeeStatus(emp.id)}
+                  className="text-muted-foreground hover:text-foreground text-[10px] underline cursor-pointer"
+                >
+                  {emp.status === "ACTIVE" ? "Deactivate" : "Activate"}
+                </button>
+              )}
             </div>
           </div>
         ))}
@@ -240,6 +309,115 @@ export default function EmployeesPage() {
           ))}
         </div>
       </div>
+
+      {/* Invite New Employee Modal */}
+      {showInviteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in">
+          <div className="relative w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-2xl">
+            <button
+              onClick={() => setShowInviteModal(false)}
+              className="absolute top-4 right-4 p-2 rounded-xl text-muted-foreground hover:text-foreground"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2 mb-4">
+              <UserPlus className="w-5 h-5 text-primary" />
+              <h3 className="font-bold text-lg text-foreground">Invite New Staff Member</h3>
+            </div>
+
+            <form onSubmit={handleInviteEmployee} className="space-y-3.5 text-xs">
+              <div>
+                <label className="font-semibold text-muted-foreground uppercase text-[10px]">
+                  Full Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Vignesh Sundaram"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  className="w-full mt-1 h-9 px-3 rounded-xl border border-border bg-background focus:border-primary focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-muted-foreground uppercase text-[10px]">
+                  Email Address *
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="vignesh@suriyamobiles.com"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  className="w-full mt-1 h-9 px-3 rounded-xl border border-border bg-background focus:border-primary focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-muted-foreground uppercase text-[10px]">
+                  Mobile Phone Number
+                </label>
+                <input
+                  type="tel"
+                  placeholder="+91 98401 22334"
+                  value={newPhone}
+                  onChange={(e) => setNewPhone(e.target.value)}
+                  className="w-full mt-1 h-9 px-3 rounded-xl border border-border bg-background focus:border-primary focus:outline-none font-mono"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-muted-foreground uppercase text-[10px]">
+                    Assigned Role
+                  </label>
+                  <select
+                    value={newRole}
+                    onChange={(e) => setNewRole(e.target.value as UserRole)}
+                    className="w-full mt-1 h-9 px-3 rounded-xl border border-border bg-background text-foreground focus:border-primary focus:outline-none font-semibold capitalize"
+                  >
+                    <option value="cashier">Cashier (POS)</option>
+                    <option value="admin">Store Admin</option>
+                    <option value="inventory_staff">Inventory Staff</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-semibold text-muted-foreground uppercase text-[10px]">
+                    Assigned Branch
+                  </label>
+                  <select
+                    value={newBranch}
+                    onChange={(e) => setNewBranch(e.target.value)}
+                    className="w-full mt-1 h-9 px-3 rounded-xl border border-border bg-background text-foreground focus:border-primary focus:outline-none font-semibold"
+                  >
+                    <option value="Main Branch - Anna Nagar">Main Branch - Anna Nagar</option>
+                    <option value="Branch 2 - T. Nagar Express">Branch 2 - T. Nagar Express</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowInviteModal(false)}
+                  className="px-4 py-2 rounded-xl border border-border text-xs font-semibold hover:bg-muted"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-primary text-primary-foreground font-bold text-xs shadow-md"
+                >
+                  Create & Grant Role
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

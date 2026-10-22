@@ -16,6 +16,9 @@ import {
   Printer,
   X,
   ShieldAlert,
+  PauseCircle,
+  PlayCircle,
+  Percent,
 } from "lucide-react";
 import { formatINR, calculateCartTotals } from "@/lib/finance";
 import { INITIAL_PRODUCTS, ProductItem } from "@/lib/mock-data";
@@ -40,6 +43,14 @@ interface LastInvoiceData {
   items: CartLineItem[];
 }
 
+interface HeldBill {
+  id: string;
+  customerName: string;
+  time: string;
+  cart: CartLineItem[];
+  discountRupees: string;
+}
+
 export default function POSBillingPage() {
   const [products] = useState<ProductItem[]>(INITIAL_PRODUCTS);
   const [cart, setCart] = useState<CartLineItem[]>([
@@ -61,11 +72,24 @@ export default function POSBillingPage() {
   const [customerPhone, setCustomerPhone] = useState("9840000000");
   const [customerGstin, setCustomerGstin] = useState("");
 
+  // Discounts
+  const [billDiscountRupees, setBillDiscountRupees] = useState<string>("0");
+
+  // Hold / Recall Bills
+  const [heldBills, setHeldBills] = useState<HeldBill[]>([]);
+
   // Payment details
   const [paymentMethod, setPaymentMethod] = useState<"CASH" | "UPI" | "CARD" | "SPLIT">("UPI");
   const [cashTendered, setCashTendered] = useState<string>("");
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [lastInvoice, setLastInvoice] = useState<LastInvoiceData | null>(null);
+
+  // Quick Customer Switcher
+  const selectPresetCustomer = (name: string, phone: string, gstin = "") => {
+    setCustomerName(name);
+    setCustomerPhone(phone);
+    setCustomerGstin(gstin);
+  };
 
   // Filter products for quick-add grid
   const filteredProducts = useMemo(() => {
@@ -80,13 +104,28 @@ export default function POSBillingPage() {
     });
   }, [products, selectedCategory, searchQuery]);
 
+  // Handle direct barcode scanner enter
+  const handleBarcodeEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && searchQuery.trim()) {
+      const match = products.find(
+        (p) =>
+          p.barcode === searchQuery.trim() ||
+          p.sku.toLowerCase() === searchQuery.trim().toLowerCase() ||
+          p.availableSerials?.includes(searchQuery.trim())
+      );
+      if (match) {
+        addToCart(match);
+        setSearchQuery("");
+      }
+    }
+  };
+
   // Cart operations
   const addToCart = (product: ProductItem) => {
     setCart((prev) => {
       const existing = prev.find((item) => item.product.id === product.id);
       if (existing) {
         if (product.hasSerial) {
-          // Phones require unique IMEI per unit, add as separate line or prompt IMEI
           return [
             ...prev,
             {
@@ -137,6 +176,31 @@ export default function POSBillingPage() {
     setCart((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // Park / Hold current bill
+  const handleHoldBill = () => {
+    if (cart.length === 0) return;
+    const newHeld: HeldBill = {
+      id: `park-${Date.now()}`,
+      customerName,
+      time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+      cart,
+      discountRupees: billDiscountRupees,
+    };
+    setHeldBills([...heldBills, newHeld]);
+    setCart([]);
+    setBillDiscountRupees("0");
+    setCustomerName("Walk-in Customer");
+    setCustomerPhone("9840000000");
+  };
+
+  // Recall parked bill
+  const handleRecallBill = (held: HeldBill) => {
+    setCart(held.cart);
+    setCustomerName(held.customerName);
+    setBillDiscountRupees(held.discountRupees);
+    setHeldBills(heldBills.filter((h) => h.id !== held.id));
+  };
+
   // Cart Calculations
   const calculatedItems = useMemo(() => {
     return cart.map((item) => ({
@@ -148,9 +212,14 @@ export default function POSBillingPage() {
     }));
   }, [cart]);
 
+  const additionalDiscountPaise = useMemo(() => {
+    const val = parseFloat(billDiscountRupees || "0");
+    return isNaN(val) ? 0 : Math.round(val * 100);
+  }, [billDiscountRupees]);
+
   const totals = useMemo(() => {
-    return calculateCartTotals(calculatedItems);
-  }, [calculatedItems]);
+    return calculateCartTotals(calculatedItems, additionalDiscountPaise);
+  }, [calculatedItems, additionalDiscountPaise]);
 
   const changeReturnPaise = useMemo(() => {
     if (paymentMethod !== "CASH" || !cashTendered) return 0;
@@ -170,7 +239,7 @@ export default function POSBillingPage() {
       return;
     }
 
-    const invoiceData = {
+    const invoiceData: LastInvoiceData = {
       invoiceNumber: `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
       date: new Date().toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }),
       customerName,
@@ -202,23 +271,44 @@ export default function POSBillingPage() {
           </p>
         </div>
 
-        {/* Quick info / customer preview */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-card border border-border text-xs">
-            <User className="w-3.5 h-3.5 text-sky-400" />
-            <span className="font-semibold text-foreground">{customerName}</span>
-            <span className="text-muted-foreground">({customerPhone})</span>
-          </div>
+        {/* Quick action buttons */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {heldBills.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              {heldBills.map((h) => (
+                <button
+                  key={h.id}
+                  onClick={() => handleRecallBill(h)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 font-bold text-[11px] hover:bg-amber-500/25 transition-colors cursor-pointer"
+                  title="Click to resume held bill"
+                >
+                  <PlayCircle className="w-3.5 h-3.5" />
+                  <span>Resume ({h.customerName.slice(0, 8)} - {h.time})</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <button
+            onClick={handleHoldBill}
+            disabled={cart.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border bg-card text-xs font-semibold hover:bg-muted transition-colors disabled:opacity-40 cursor-pointer"
+          >
+            <PauseCircle className="w-3.5 h-3.5 text-amber-400" />
+            <span>Hold Bill</span>
+          </button>
+
           <button
             onClick={() => setCart([])}
-            className="text-xs font-semibold px-3 py-1.5 rounded-xl border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 transition-colors"
+            disabled={cart.length === 0}
+            className="text-xs font-semibold px-3 py-1.5 rounded-xl border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 transition-colors disabled:opacity-40 cursor-pointer"
           >
             Clear Cart
           </button>
         </div>
       </div>
 
-      {/* Main Grid: Catalog Left (3 cols) | Cart & Bill Right (2 cols) */}
+      {/* Main Grid: Catalog Left (7 cols) | Cart & Bill Right (5 cols) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left: Product Catalog & Search (7 Cols) */}
         <div className="lg:col-span-7 space-y-4">
@@ -228,9 +318,10 @@ export default function POSBillingPage() {
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="Scan barcode, IMEI or search smartphone, accessories..."
+                placeholder="Scan barcode, IMEI or type phone model (Press Enter to auto-add)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={handleBarcodeEnter}
                 className="w-full h-11 pl-10 pr-12 rounded-xl border border-border/80 bg-card/60 focus:bg-background text-sm font-medium focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
               <Barcode className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-sky-400" />
@@ -249,7 +340,7 @@ export default function POSBillingPage() {
                 <button
                   key={tab.id}
                   onClick={() => setSelectedCategory(tab.id)}
-                  className={`px-3 py-1.5 rounded-xl font-medium whitespace-nowrap transition-all ${
+                  className={`px-3 py-1.5 rounded-xl font-medium whitespace-nowrap transition-all cursor-pointer ${
                     selectedCategory === tab.id
                       ? "bg-primary text-primary-foreground shadow-sm"
                       : "bg-muted/40 hover:bg-muted text-muted-foreground"
@@ -308,39 +399,60 @@ export default function POSBillingPage() {
 
         {/* Right: Active Bill & Checkout Panel (5 Cols) */}
         <div className="lg:col-span-5 flex flex-col rounded-3xl border border-border/80 bg-card/60 backdrop-blur-xl p-5 shadow-xl">
-          {/* Bill Customer Form */}
-          <div className="grid grid-cols-2 gap-2 pb-3 border-b border-border/60">
-            <div>
-              <label className="text-[10px] font-semibold text-muted-foreground uppercase">
-                Customer Name
+          {/* Quick Customer Selection */}
+          <div className="pb-3 border-b border-border/60 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase flex items-center gap-1">
+                <User className="w-3 h-3 text-sky-400" />
+                <span>Customer Details</span>
               </label>
-              <input
-                type="text"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                className="w-full mt-1 h-8 px-2.5 rounded-lg border border-border bg-background text-xs font-medium focus:border-primary focus:outline-none"
-              />
+
+              <select
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "c1") selectPresetCustomer("Rajesh Kumar", "9840123456", "33AAACR1234F1Z1");
+                  else if (val === "c2") selectPresetCustomer("Priya Sundaram", "9790456789");
+                  else if (val === "c3") selectPresetCustomer("Senthil Nathan", "9444123890");
+                  else selectPresetCustomer("Walk-in Customer", "9840000000");
+                }}
+                className="text-[10px] bg-muted/40 border border-border rounded-lg px-2 py-0.5 text-foreground cursor-pointer"
+              >
+                <option value="walkin">Walk-in Customer</option>
+                <option value="c1">Rajesh Kumar (B2B)</option>
+                <option value="c2">Priya Sundaram</option>
+                <option value="c3">Senthil Nathan (Khata)</option>
+              </select>
             </div>
-            <div>
-              <label className="text-[10px] font-semibold text-muted-foreground uppercase">
-                Phone (WhatsApp Inv)
-              </label>
-              <input
-                type="text"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                className="w-full mt-1 h-8 px-2.5 rounded-lg border border-border bg-background text-xs font-medium focus:border-primary focus:outline-none"
-              />
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <input
+                  type="text"
+                  placeholder="Customer Name"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  className="w-full h-8 px-2.5 rounded-lg border border-border bg-background text-xs font-medium focus:border-primary focus:outline-none"
+                />
+              </div>
+              <div>
+                <input
+                  type="text"
+                  placeholder="Phone Number"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  className="w-full h-8 px-2.5 rounded-lg border border-border bg-background text-xs font-medium focus:border-primary focus:outline-none"
+                />
+              </div>
             </div>
           </div>
 
           {/* Cart Items List */}
-          <div className="flex-1 overflow-y-auto my-3 space-y-2.5 max-h-[320px] pr-1">
+          <div className="flex-1 overflow-y-auto my-3 space-y-2.5 max-h-[290px] pr-1">
             {cart.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
+              <div className="flex flex-col items-center justify-center h-44 text-muted-foreground">
                 <Receipt className="w-8 h-8 opacity-40 mb-2" />
                 <p className="text-xs font-medium">Bill is currently empty</p>
-                <p className="text-[11px] opacity-70">Click items on the left to add</p>
+                <p className="text-[11px] opacity-70">Click items on the left or scan barcode to add</p>
               </div>
             ) : (
               cart.map((item, index) => (
@@ -363,7 +475,8 @@ export default function POSBillingPage() {
                       </p>
                       <button
                         onClick={() => removeFromCart(index)}
-                        className="text-muted-foreground hover:text-rose-500 transition-colors p-1"
+                        className="text-muted-foreground hover:text-rose-500 transition-colors p-1 cursor-pointer"
+                        title="Remove item"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -392,7 +505,7 @@ export default function POSBillingPage() {
                     <div className="flex items-center gap-2 bg-muted/40 rounded-lg p-1 border border-border/50">
                       <button
                         onClick={() => updateQty(index, -1)}
-                        className="w-5 h-5 flex items-center justify-center rounded bg-background hover:bg-card text-foreground"
+                        className="w-5 h-5 flex items-center justify-center rounded bg-background hover:bg-card text-foreground cursor-pointer"
                       >
                         <Minus className="w-3 h-3" />
                       </button>
@@ -400,7 +513,7 @@ export default function POSBillingPage() {
                       <button
                         onClick={() => updateQty(index, 1)}
                         disabled={item.product.hasSerial} // phones add as separate IMEI line
-                        className="w-5 h-5 flex items-center justify-center rounded bg-background hover:bg-card text-foreground disabled:opacity-30"
+                        className="w-5 h-5 flex items-center justify-center rounded bg-background hover:bg-card text-foreground disabled:opacity-30 cursor-pointer"
                       >
                         <Plus className="w-3 h-3" />
                       </button>
@@ -419,12 +532,27 @@ export default function POSBillingPage() {
           {missingImeiItems.length > 0 && (
             <div className="flex items-center gap-2 p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs mb-2">
               <ShieldAlert className="w-4 h-4 shrink-0" />
-              <span>Please assign IMEI to all mobile phones before billing.</span>
+              <span>Please assign 15-digit IMEI to all smartphones before checkout.</span>
             </div>
           )}
 
-          {/* Bill Calculation Summary */}
-          <div className="p-3 rounded-2xl bg-muted/30 border border-border/60 space-y-1.5 text-xs">
+          {/* Discount & Calculation Summary */}
+          <div className="p-3 rounded-2xl bg-muted/30 border border-border/60 space-y-2 text-xs">
+            {/* Bill Discount Input */}
+            <div className="flex items-center justify-between pb-1.5 border-b border-border/50">
+              <span className="text-muted-foreground font-medium flex items-center gap-1">
+                <Percent className="w-3.5 h-3.5 text-sky-400" /> Bill Discount (₹):
+              </span>
+              <input
+                type="number"
+                min="0"
+                placeholder="0"
+                value={billDiscountRupees}
+                onChange={(e) => setBillDiscountRupees(e.target.value)}
+                className="w-24 h-6 px-2 rounded border border-border bg-background text-xs font-bold text-right"
+              />
+            </div>
+
             <div className="flex justify-between text-muted-foreground">
               <span>Taxable Subtotal:</span>
               <span>{formatINR(totals.taxableAmountPaise)}</span>
@@ -468,7 +596,7 @@ export default function POSBillingPage() {
                     onClick={() =>
                       setPaymentMethod(m.id as "CASH" | "UPI" | "CARD" | "SPLIT")
                     }
-                    className={`flex flex-col items-center justify-center p-2 rounded-xl border text-[11px] font-semibold transition-all ${
+                    className={`flex flex-col items-center justify-center p-2 rounded-xl border text-[11px] font-semibold transition-all cursor-pointer ${
                       paymentMethod === m.id
                         ? "bg-primary text-primary-foreground border-primary shadow-sm"
                         : "bg-muted/20 border-border text-muted-foreground hover:bg-muted/50"
@@ -510,7 +638,7 @@ export default function POSBillingPage() {
           <button
             onClick={handleCheckout}
             disabled={cart.length === 0 || missingImeiItems.length > 0}
-            className="mt-4 w-full h-12 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-sm shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="mt-4 w-full h-12 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-sm shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             <Printer className="w-4 h-4" />
             <span>Generate GST Tax Invoice ({formatINR(totals.grandTotalPaise)})</span>
@@ -524,7 +652,7 @@ export default function POSBillingPage() {
           <div className="relative w-full max-w-lg rounded-3xl border border-border bg-card p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowInvoiceModal(false)}
-              className="absolute top-4 right-4 p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted"
+              className="absolute top-4 right-4 p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -639,7 +767,7 @@ export default function POSBillingPage() {
                 onClick={() => {
                   window.print();
                 }}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground font-semibold text-xs shadow-md"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground font-semibold text-xs shadow-md cursor-pointer"
               >
                 <Printer className="w-4 h-4" />
                 <span>Print Invoice</span>
@@ -648,8 +776,9 @@ export default function POSBillingPage() {
                 onClick={() => {
                   setShowInvoiceModal(false);
                   setCart([]);
+                  setBillDiscountRupees("0");
                 }}
-                className="px-4 py-2 rounded-xl border border-border text-foreground font-semibold text-xs hover:bg-muted"
+                className="px-4 py-2 rounded-xl border border-border text-foreground font-semibold text-xs hover:bg-muted cursor-pointer"
               >
                 Close & Next Bill
               </button>
