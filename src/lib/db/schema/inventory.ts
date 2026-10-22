@@ -7,12 +7,10 @@ import {
   timestamp,
   pgEnum,
   integer,
-  numeric,
-  jsonb,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql, type SQL } from "drizzle-orm";
 import { organisations, branches } from "./organisations";
 import { products, deviceUnits } from "./products";
 import { users } from "./users";
@@ -57,7 +55,7 @@ export const inventoryBalances = pgTable(
     quantityOnHand: integer("quantity_on_hand").default(0).notNull(),
     quantityReserved: integer("quantity_reserved").default(0).notNull(),
     quantityAvailable: integer("quantity_available")
-      .generatedAlwaysAs((): any => undefined) // computed: on_hand - reserved
+      .generatedAlwaysAs((): SQL => sql`quantity_on_hand - quantity_reserved`)
       .notNull(),
     reorderLevel: integer("reorder_level").default(0).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),

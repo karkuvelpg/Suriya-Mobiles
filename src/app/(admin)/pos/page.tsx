@@ -14,13 +14,10 @@ import {
   Banknote,
   QrCode,
   Printer,
-  CheckCircle2,
   X,
-  AlertCircle,
-  Tag,
   ShieldAlert,
 } from "lucide-react";
-import { formatINR, calculateGST, calculateCartTotals } from "@/lib/finance";
+import { formatINR, calculateCartTotals } from "@/lib/finance";
 import { INITIAL_PRODUCTS, ProductItem } from "@/lib/mock-data";
 
 interface CartLineItem {
@@ -30,6 +27,17 @@ interface CartLineItem {
   unitPricePaise: number;
   discountPaise: number;
   taxRatePercent: number;
+}
+
+interface LastInvoiceData {
+  invoiceNumber: string;
+  date: string;
+  customerName: string;
+  customerPhone: string;
+  customerGstin: string;
+  paymentMethod: "CASH" | "UPI" | "CARD" | "SPLIT";
+  totals: ReturnType<typeof calculateCartTotals>;
+  items: CartLineItem[];
 }
 
 export default function POSBillingPage() {
@@ -57,7 +65,7 @@ export default function POSBillingPage() {
   const [paymentMethod, setPaymentMethod] = useState<"CASH" | "UPI" | "CARD" | "SPLIT">("UPI");
   const [cashTendered, setCashTendered] = useState<string>("");
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
-  const [lastInvoice, setLastInvoice] = useState<any>(null);
+  const [lastInvoice, setLastInvoice] = useState<LastInvoiceData | null>(null);
 
   // Filter products for quick-add grid
   const filteredProducts = useMemo(() => {
@@ -457,7 +465,9 @@ export default function POSBillingPage() {
                 return (
                   <button
                     key={m.id}
-                    onClick={() => setPaymentMethod(m.id as any)}
+                    onClick={() =>
+                      setPaymentMethod(m.id as "CASH" | "UPI" | "CARD" | "SPLIT")
+                    }
                     className={`flex flex-col items-center justify-center p-2 rounded-xl border text-[11px] font-semibold transition-all ${
                       paymentMethod === m.id
                         ? "bg-primary text-primary-foreground border-primary shadow-sm"

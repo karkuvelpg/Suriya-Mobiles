@@ -6,13 +6,7 @@ import {
   Plus,
   Search,
   Smartphone,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  FileText,
   X,
-  Phone,
-  Calendar,
   Printer,
 } from "lucide-react";
 import { formatINR } from "@/lib/finance";
@@ -148,7 +142,9 @@ export default function RepairsPage() {
                 <span className="font-mono font-bold text-xs text-sky-400">{job.jobId}</span>
                 <select
                   value={job.status}
-                  onChange={(e) => updateStatus(job.id, e.target.value as any)}
+                  onChange={(e) =>
+                    updateStatus(job.id, e.target.value as RepairJob["status"])
+                  }
                   className={`text-[10px] font-bold px-2 py-0.5 rounded-full border cursor-pointer focus:outline-none ${
                     job.status === "COMPLETED"
                       ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"

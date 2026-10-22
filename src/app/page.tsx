@@ -11,21 +11,14 @@ import {
   Wrench,
   Sparkles,
   ArrowRight,
-  Star,
   Check,
   Phone,
-  MapPin,
-  Clock,
   X,
   Plus,
   Minus,
-  Trash2,
   Lock,
-  ChevronRight,
   CreditCard,
   QrCode,
-  Tag,
-  Zap,
 } from "lucide-react";
 import { formatINR } from "@/lib/finance";
 import { INITIAL_PRODUCTS, ProductItem } from "@/lib/mock-data";
@@ -42,6 +35,7 @@ export default function StorefrontPage() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
+  const [orderId, setOrderId] = useState("SM-WEB-4821");
 
   // Checkout form
   const [custName, setCustName] = useState("");
@@ -94,6 +88,7 @@ export default function StorefrontPage() {
   const handleCheckoutSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!custName || !custPhone || !custAddress) return;
+    setOrderId(`SM-WEB-${Math.floor(1000 + Math.random() * 9000)}`);
     setOrderPlaced(true);
   };
 
@@ -494,7 +489,7 @@ export default function StorefrontPage() {
                 </div>
                 <h3 className="text-xl font-bold text-foreground">Order Successfully Booked!</h3>
                 <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                  Order #SM-WEB-{Math.floor(1000 + Math.random() * 9000)} is confirmed. Our Anna Nagar store executive will call you to confirm dispatch and IMEI allotment.
+                  Order #{orderId} is confirmed. Our Anna Nagar store executive will call you to confirm dispatch and IMEI allotment.
                 </p>
                 <div className="pt-4">
                   <button

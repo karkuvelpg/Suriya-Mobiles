@@ -5,17 +5,9 @@ import {
   Boxes,
   Plus,
   Search,
-  Filter,
   Smartphone,
-  AlertTriangle,
-  CheckCircle2,
-  Tag,
-  ArrowUpDown,
-  MoreVertical,
   X,
-  PlusCircle,
   Eye,
-  ShieldCheck,
 } from "lucide-react";
 import { formatINR } from "@/lib/finance";
 import { INITIAL_PRODUCTS, ProductItem } from "@/lib/mock-data";
@@ -366,7 +358,11 @@ export default function InventoryPage() {
                   </label>
                   <select
                     value={newProdCategory}
-                    onChange={(e) => setNewProdCategory(e.target.value as any)}
+                    onChange={(e) =>
+                      setNewProdCategory(
+                        e.target.value as "smartphones" | "accessories" | "audio" | "wearables"
+                      )
+                    }
                     className="w-full mt-1 h-9 px-3 rounded-xl border border-border bg-background focus:border-primary focus:outline-none text-foreground"
                   >
                     <option value="smartphones">Smartphones</option>

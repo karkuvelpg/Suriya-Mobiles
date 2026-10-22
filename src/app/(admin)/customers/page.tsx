@@ -7,10 +7,6 @@ import {
   Plus,
   Phone,
   Mail,
-  Receipt,
-  CreditCard,
-  UserCheck,
-  CheckCircle2,
 } from "lucide-react";
 import { formatINR } from "@/lib/finance";
 
